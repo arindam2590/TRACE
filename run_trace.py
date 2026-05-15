@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse
 from trace import TraceConfig, build_trace_plan
 from trace.ui import run_ui
+from trace.metrics import save_simulation_metrics
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,6 +21,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
     cfg = TraceConfig(
         rows=args.rows,
         cols=args.cols,
@@ -30,15 +32,21 @@ def main() -> None:
         population_size=args.population,
         energy_budget=args.energy,
     )
+
     print("Building TRACE plan. This may take a few seconds...")
     plan = build_trace_plan(cfg)
     print("TRACE plan built.")
-    print(f"Coverage: {100*plan.metrics.coverage:.2f}%")
-    print(f"Priority servicing: {100*plan.metrics.priority_serviced:.2f}%")
+
+    metrics_file = save_simulation_metrics(plan, cfg, out_dir="results")
+    print(f"Simulation metrics saved to: {metrics_file}")
+
+    print(f"Coverage: {100 * plan.metrics.coverage:.2f}%")
+    print(f"Priority servicing: {100 * plan.metrics.priority_serviced:.2f}%")
     print(f"Redundancy: {plan.metrics.redundancy:.3f}")
     print(f"Mission time: {plan.metrics.mission_time}")
     print(f"Total turns: {plan.metrics.total_turns}")
     print(f"Hidden victim score: {plan.metrics.discovered_hidden_victims}")
+
     if not args.no_ui:
         run_ui(plan)
 
