@@ -22,6 +22,12 @@ class TraceConfig:
     balance_lr: float = 0.22
     distance_eps: float = 1e-6
 
+    # Mission constraints & victim energy costs
+    mission_time_limit: int | None = None
+    victim_energy_cost: float = 2.0
+    priority_victim_energy_cost: float = 2.0
+    hidden_victim_energy_cost: float = 3.0
+
     # TRACE Stage 2: priority-weighted CVRP
     energy_budget: int = 95
     turn_cost: float = 0.25
@@ -54,14 +60,24 @@ class TraceConfig:
 
     @property
     def robot_starts(self) -> List[Cell]:
-        base = [
-            (1, 1),
-            (1, self.cols - 2),
-            (self.rows - 2, 1),
-            (self.rows - 2, self.cols - 2),
-            (self.rows // 2, 1),
-            (self.rows // 2, self.cols - 2),
-            (1, self.cols // 2),
-            (self.rows - 2, self.cols // 2),
-        ]
-        return base[: self.n_robots]
+        # Generate a clockwise loop of perimeter cells at distance 1 from grid bounds
+        loop = []
+        # Top edge
+        for c in range(1, self.cols - 2):
+            loop.append((1, c))
+        # Right edge
+        for r in range(1, self.rows - 2):
+            loop.append((r, self.cols - 2))
+        # Bottom edge
+        for c in range(self.cols - 2, 1, -1):
+            loop.append((self.rows - 2, c))
+        # Left edge
+        for r in range(self.rows - 2, 1, -1):
+            loop.append((r, 1))
+
+        L = len(loop)
+        starts = []
+        for i in range(self.n_robots):
+            idx = int(round(i * L / self.n_robots)) % L
+            starts.append(loop[idx])
+        return starts
