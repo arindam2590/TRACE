@@ -24,14 +24,25 @@ class PriorityAwareADARP:
     victim-priority fairness, with the beta term annealed over iterations.
     """
 
-    def __init__(self, env: TraceEnvironment):
+    def __init__(self, env: TraceEnvironment, use_manhattan: bool = False, anneal: bool = True):
         self.env = env
         self.cfg = env.cfg
         self.n = self.cfg.n_robots
         self.starts = env.starts
-        self.dist_maps = [bfs_distances(s, env.free, self.cfg.rows, self.cfg.cols) for s in self.starts]
+        self.anneal = anneal
+        if use_manhattan:
+            self.dist_maps = []
+            for s in self.starts:
+                m_map = {}
+                for cell in env.free:
+                    m_map[cell] = abs(s[0] - cell[0]) + abs(s[1] - cell[1])
+                self.dist_maps.append(m_map)
+        else:
+            self.dist_maps = [bfs_distances(s, env.free, self.cfg.rows, self.cfg.cols) for s in self.starts]
 
-    def run(self) -> DecompositionResult:
+    def run(self, anneal: bool | None = None) -> DecompositionResult:
+        if anneal is None:
+            anneal = self.anneal
         cfg = self.cfg
         assignment = -np.ones((cfg.rows, cfg.cols), dtype=int)
         multipliers = np.ones(self.n, dtype=float)
@@ -86,7 +97,8 @@ class PriorityAwareADARP:
                 "max_cell_error": float(np.max(np.abs(cell_error))),
                 "max_priority_error": float(np.max(np.abs(priority_error))) if target_priority > 0 else 0.0,
             })
-            beta = max(cfg.beta_min, beta * cfg.beta_decay)
+            if anneal:
+                beta = max(cfg.beta_min, beta * cfg.beta_decay)
 
         final_regions = [set() for _ in range(self.n)]
         for cell in free_cells:

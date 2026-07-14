@@ -18,22 +18,45 @@ class SolverResult:
     priority_history: List[float]
     action_history: List[str]
     panic_events: int
+    mean_cost_history: List[float]
+    best_trips_history: List[List[List[Cell]]]
 
 class DeltaRLMemeticSolver:
     """TRACE Stage 3: Delta RL-guided memetic solver with victim-aware state."""
 
-    def __init__(self, cfg: TraceConfig, rng: random.Random | None = None):
+    def __init__(self, cfg: TraceConfig, rng: random.Random | None = None,
+                 state_aug: bool = True, pri_panic: bool = True, all_panic: bool = True,
+                 block_ops: bool = True, q_learn: bool = True, anneal: bool = True,
+                 allowed_operators: List[str] | None = None):
         self.cfg = cfg
         self.rng = rng or random.Random(cfg.seed)
         self.q: Dict[Tuple[str, int], float] = {}
         self.feature_min = np.full(7, np.inf)
         self.feature_max = np.full(7, -np.inf)
         self.epsilon = cfg.epsilon_start
+        self.state_aug = state_aug
+        self.pri_panic = pri_panic
+        self.all_panic = all_panic
+        self.block_ops = block_ops
+        self.q_learn = q_learn
+        self.anneal = anneal
+        
+        op_map = {
+            "swap": 0,
+            "two_opt": 1,
+            "relocate": 2,
+            "block_swap": 3,
+            "block_relocate": 4
+        }
+        if allowed_operators is not None:
+            self.allowed_actions = [op_map[op] for op in allowed_operators if op in op_map]
+        else:
+            self.allowed_actions = [0, 1, 2, 3, 4] if block_ops else [0, 1, 2]
 
     def solve(self, inst: PWCVRPInstance) -> SolverResult:
         cfg = self.cfg
         if not inst.customers:
-            return SolverResult([], [], 0.0, 0, [0.0], [1.0], [], 0)
+            return SolverResult([], [], 0.0, 0, [0.0] * cfg.generations, [1.0] * cfg.generations, [], 0, [0.0] * cfg.generations, [[] for _ in range(cfg.generations)])
 
         population = self._initial_population(inst)
         costs, trips_list, turns_list = self._evaluate(population, inst)
@@ -46,6 +69,8 @@ class DeltaRLMemeticSolver:
         cost_history: List[float] = []
         priority_history: List[float] = []
         action_history: List[str] = []
+        mean_cost_history: List[float] = []
+        best_trips_history: List[List[List[Cell]]] = []
         panic_events = 0
         last_priority_improvement = 0
         panic_until = -1
@@ -78,27 +103,28 @@ class DeltaRLMemeticSolver:
                         candidate_cost = mutated_cost
                 new_population.append(candidate)
 
-            # True elitism: slot 0 always carries global best.
-            new_population[0] = best_order.copy()
             population = new_population
             costs, trips_list, turns_list = self._evaluate(population, inst)
 
             gen_best_idx = int(np.argmin(costs))
-            if float(costs[gen_best_idx]) < best_cost:
-                best_order = population[gen_best_idx].copy()
+            if costs[gen_best_idx] < best_cost:
                 best_cost = float(costs[gen_best_idx])
+                best_order = population[gen_best_idx].copy()
                 best_trips = [t.copy() for t in trips_list[gen_best_idx]]
                 best_turns = int(turns_list[gen_best_idx])
 
             next_state, after_total, after_violation, after_rho = self._state(population, costs, trips_list, inst)
             if after_rho > before_rho + 1e-9:
                 last_priority_improvement = gen
-            reward = (before_total - after_total) - cfg.violation_penalty * after_violation + 50.0 * (after_rho - before_rho)
+            reward = (before_total - after_total) - cfg.violation_penalty * after_violation + cfg.mu * (after_rho - before_rho)
             self._update_q(state, action, reward, next_state)
-            self.epsilon = max(cfg.epsilon_floor, self.epsilon * cfg.epsilon_decay)
+            if self.anneal:
+                self.epsilon = max(cfg.epsilon_floor, self.epsilon * cfg.epsilon_decay)
 
             cost_history.append(best_cost)
             priority_history.append(after_rho)
+            mean_cost_history.append(float(np.mean(costs)))
+            best_trips_history.append([t.copy() for t in best_trips])
 
             if self._panic_required(gen, cost_history, priority_history, last_priority_improvement):
                 panic_events += 1
@@ -112,7 +138,18 @@ class DeltaRLMemeticSolver:
                     population.append(best_order.copy())
                 costs, trips_list, turns_list = self._evaluate(population, inst)
 
-        return SolverResult(best_order, best_trips, best_cost, best_turns, cost_history, priority_history, action_history, panic_events)
+        return SolverResult(
+            best_order,
+            best_trips,
+            best_cost,
+            best_turns,
+            cost_history,
+            priority_history,
+            action_history,
+            panic_events,
+            mean_cost_history,
+            best_trips_history
+        )
 
     def _initial_population(self, inst: PWCVRPInstance) -> List[List[Cell]]:
         population = []
@@ -147,7 +184,7 @@ class DeltaRLMemeticSolver:
         best_idx = int(np.argmin(costs))
         best = population[best_idx]
         priority_set = set(c for c in inst.customers if inst.priority_weights.get(c, 1.0) > 1.5)
-        if priority_set:
+        if self.state_aug and priority_set:
             early = max(1, int(len(best) * self.cfg.early_service_fraction))
             rho = len(set(best[:early]) & priority_set) / len(priority_set)
         else:
@@ -171,14 +208,14 @@ class DeltaRLMemeticSolver:
         return "(" + ",".join(bins) + ")", float(raw[0]), float(raw[3]), rho
 
     def _choose_action(self, state: str) -> int:
-        if self.rng.random() < self.epsilon:
-            return self.rng.randrange(len(OPERATORS))
-        qs = [self.q.get((state, a), 0.0) for a in range(len(OPERATORS))]
-        return int(np.argmax(qs))
+        if not self.q_learn or self.rng.random() < self.epsilon:
+            return self.rng.choice(self.allowed_actions)
+        qs = [self.q.get((state, a), 0.0) for a in self.allowed_actions]
+        return self.allowed_actions[int(np.argmax(qs))]
 
     def _update_q(self, state: str, action: int, reward: float, next_state: str) -> None:
         old = self.q.get((state, action), 0.0)
-        next_best = max(self.q.get((next_state, a), 0.0) for a in range(len(OPERATORS)))
+        next_best = max(self.q.get((next_state, a), 0.0) for a in self.allowed_actions)
         self.q[(state, action)] = old + self.cfg.rl_alpha * (reward + self.cfg.rl_gamma * next_best - old)
 
     def _apply_operator(self, chrom: List[Cell], action: int) -> List[Cell]:
@@ -216,11 +253,13 @@ class DeltaRLMemeticSolver:
         return c
 
     def _panic_required(self, gen: int, costs: List[float], rho_hist: List[float], last_prio: int) -> bool:
+        if not self.all_panic:
+            return False
         if gen < max(self.cfg.panic_cost_window, 10):
             return False
         w = self.cfg.panic_cost_window
         old = costs[-w]
         new = costs[-1]
         cost_stagnant = old > 0 and abs(old - new) / abs(old) < self.cfg.panic_threshold
-        priority_stagnant = (gen - last_prio) >= self.cfg.panic_priority_window and rho_hist[-1] < 0.999
+        priority_stagnant = self.pri_panic and (gen - last_prio) >= self.cfg.panic_priority_window and rho_hist[-1] < 0.999
         return cost_stagnant or priority_stagnant

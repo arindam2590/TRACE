@@ -25,7 +25,7 @@ def build_instances(env: TraceEnvironment, regions: List[Set[Cell]]) -> List[PWC
         weights: Dict[Cell, float] = {}
         for c in customers:
             if c in env.priority_cells:
-                weights[c] = cfg.waypoint_weight * (1.0 + float(env.prior[c]))
+                weights[c] = cfg.omega_w * (1.0 + float(env.prior[c]))
             elif c in env.hidden_victims:
                 weights[c] = 1.0 + 0.25 * env.hidden_victims[c]
             else:

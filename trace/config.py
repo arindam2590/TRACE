@@ -32,6 +32,7 @@ class TraceConfig:
     energy_budget: int = 95
     turn_cost: float = 0.25
     waypoint_weight: float = 5.0
+    omega_w: float = 5.0
     priority_reward_scale: float = 2.25
     early_service_fraction: float = 0.35
 
@@ -45,6 +46,7 @@ class TraceConfig:
     epsilon_decay: float = 0.992
     epsilon_floor: float = 0.03
     violation_penalty: float = 1000.0
+    mu: float = 50.0
     panic_cost_window: int = 60
     panic_priority_window: int = 45
     panic_threshold: float = 0.003

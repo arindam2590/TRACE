@@ -1,627 +1,158 @@
-# TRACE: Target-Aware Routing And Coverage with Evolutionary Reinforcement Learning
+# TRACE: Target-aware Routing And Coverage with Evolutionary Reinforcement Learning
 
-TRACE is a hierarchical multi-robot search-and-rescue (SAR) simulation framework that integrates:
+This repository contains a consolidated, publication-grade Python implementation of the **TRACE** framework for multi-robot Search and Rescue (SAR) missions:
 
-1. **Priority-aware A*-DARP decomposition** for balanced multi-robot area allocation
-2. **Priority-weighted CVRP formulation** for energy-aware routing
-3. **Delta Reinforcement Learning-guided Memetic Optimization** for adaptive route improvement
-4. **Victim-aware search and rescue modeling** using a population-prior map
-5. **Interactive simulation and visualization UI** with live metrics and graph plots
+> **TRACE: Target-aware Routing And Coverage with Evolutionary Reinforcement Learning**
 
-The framework consolidates ideas from:
+The pipeline integrates three core stages to deliver target-aware area partitioning, energy-constrained vehicle routing, and reinforcement learning-guided evolutionary trajectory optimization:
 
-- A*-DARP based multi-robot coverage path planning
-- Cooperative QMIX-based victim prioritization
-- Delta RL-guided memetic optimization for CVRP
-
-The implementation is designed for reproducible experimentation in:
-
-- Multi-agent search and rescue
-- UAV swarm coordination
-- Victim-aware area coverage
-- Energy-aware path planning
-- RL-guided combinatorial optimization
-- Coverage redundancy reduction
-- Coverage-performance evaluation
+1. **Priority-Aware Area Decomposition (Stage 1):** Extension of the DARP algorithm using priority-weighted grids and Manhattan distance mappings to guarantee balanced spatial workload allocation among heterogeneous robots.
+2. **Priority-Weighted CVRP Construction (Stage 2):** Formulation of Capacity Constrained Vehicle Routing Problems (CVRP) for each sub-region, incorporating robot battery constraints, linear transit costs, and extra hover consumption on victim-critical cells.
+3. **Delta RL-Guided Memetic Algorithm (Stage 3):** Routing optimizer combining a Genetic Algorithm (GA) with local search operators. A Q-learning agent dynamically selects the best local search operators based on a 7-feature normalized state representation of the population.
 
 ---
 
-# Repository Structure
+## Interactive UI Simulator
+The Pygame-based simulator window consists of three panels:
+* **Left Panel:** Displays simulation parameters, active constraints, live mission statistics (coverage %, priority cells serviced %, hidden victims found), and individual robot load meters.
+* **Center Panel:** Visualizes the 2D grid-world search area containing obstacles, partitioned robot sub-regions, high-priority cells, hidden victims, active trajectories, and live robot movements.
+* **Right Panel:** Plots live metrics (coverage and priority servicing percentage curves) alongside Delta RL solver performance charts.
 
-```text
-TRACE_implementation/
-│
-├── run_trace.py
-├── plot_metrics.py
-├── requirements.txt
-├── README.md
-│
-├── results/
-│   └── Saved metric spreadsheets (.csv)
-│
-├── trace/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── environment.py
-│   ├── decomposition.py
-│   ├── pw_cvrp.py
-│   ├── delta_rl_ma.py
-│   ├── planner.py
-│   ├── metrics.py
-│   ├── ui.py
-│   └── utils.py
-│
-└── assets/
-    └── Optional images / screenshots
-```
+### UI Controls
+* `Space`: Pause / Resume simulation.
+* `R`: Replay the trajectory animation after execution finishes.
 
 ---
 
-# Core Components
+## Installation
 
-## 1. `environment.py`
-
-Responsible for:
-
-- Grid-world generation
-- Obstacle placement
-- Priority-cell generation
-- Hidden victim generation
-- Population-prior map generation
-- Environment initialization
-
-### Main Concepts
-
-- Free cells
-- Obstacle cells
-- Priority victim regions
-- Hidden victims
-- Robot starting positions
-
----
-
-## 2. `decomposition.py`
-
-Implements the **Priority-aware A*-DARP decomposition** stage.
-
-### Responsibilities
-
-- A* shortest-path computation
-- Obstacle-aware evaluation matrix
-- Fair multi-robot partitioning
-- Priority-load balancing
-- Connectivity preservation
-- Annealed beta scheduling
-
-### Output
-
-Returns balanced robot regions:
-
-```python
-robot_regions[i]
-```
-
-Each robot receives:
-
-- Connected subregion
-- Balanced cell count
-- Balanced priority-victim load
-
----
-
-## 3. `pw_cvrp.py`
-
-Builds the **Priority-Weighted Capacitated Vehicle Routing Problem (PW-CVRP)**.
-
-### Responsibilities
-
-- Convert robot regions into routing problems
-- Create customer nodes
-- Apply energy constraints
-- Create priority weights
-- Compute routing distances
-
-### Key Concepts
-
-- Energy-aware routing
-- Multi-trip routing
-- Priority-weighted objective
-- Turn-aware travel cost
-
----
-
-## 4. `delta_rl_ma.py`
-
-Implements the **Delta Reinforcement Learning-guided Memetic Algorithm**.
-
-### Features
-
-- Population-level Q-learning
-- Operator selection
-- Deep local search
-- Panic-window diversification
-- True elitism
-- Multi-customer operators
-
-### Supported Operators
-
-| Operator | Description |
-|---|---|
-| Swap | Exchange customers between routes |
-| 2-opt | Reverse route segments |
-| Relocate | Move customer to another route |
-| Block Swap | Swap multiple customers |
-| Block Relocate | Relocate customer blocks |
-
-### RL State Features
-
-The Q-learning agent observes:
-
-- Total cost
-- Maximum route cost
-- Minimum route cost
-- Capacity violation
-- Route variance
-- Number of routes
-- Priority coverage ratio
-
-### Panic Window
-
-Diversification activates when:
-
-- Cost stagnates
-- Priority coverage stagnates
-
----
-
-## 5. `planner.py`
-
-Main TRACE pipeline orchestrator.
-
-### Pipeline Stages
-
-```text
-Environment Generation
-        ↓
-Priority-aware A*-DARP
-        ↓
-PW-CVRP Construction
-        ↓
-Delta RL-MA Optimization
-        ↓
-Trajectory Generation
-        ↓
-Metric Evaluation
-```
-
-### Main Entry Point
-
-```python
-build_trace_plan(cfg)
-```
-
-Returns:
-
-- Robot paths
-- Simulation metrics
-- Solver histories
-- Coverage information
-
----
-
-## 6. `metrics.py`
-
-Responsible for:
-
-- Metric computation
-- Metric-curve generation
-- Metric-file naming
-- Spreadsheet saving
-- Spreadsheet loading
-
-### Metrics Supported
-
-| Metric | Description |
-|---|---|
-| Coverage | Percentage of free cells visited |
-| Priority Serviced | Priority victim coverage ratio |
-| Redundancy | Repeated coverage ratio |
-| Total Turns | Aggregate turning cost |
-| Mission Time | Maximum route duration |
-| Hidden Victim Score | Hidden victims discovered |
-| Global Cost | Delta RL-MA convergence cost |
-| Global Priority | Priority convergence history |
-
----
-
-## 7. `ui.py`
-
-Interactive simulation visualization.
-
-### UI Layout
-
-#### Left Panel
-
-Displays:
-
-- Simulation parameters
-- Coverage metrics
-- Priority servicing
-- Mission statistics
-- Hidden victim score
-- Robot-specific details
-
-#### Center Panel
-
-Displays:
-
-- Environment grid
-- Obstacles
-- Robot partitions
-- Robot trajectories
-- Priority cells
-- Hidden victims
-- Robot positions
-
-#### Right Panel
-
-Displays:
-
-- Coverage plots
-- Priority-servicing plots
-- Delta RL-MA convergence graphs
-
----
-
-# Installation
-
-## 1. Clone Repository
+Ensure you have Python 3.10+ installed. It is recommended to run inside a virtual environment.
 
 ```bash
-git clone <repository-url>
-cd TRACE_implementation
-```
-
----
-
-## 2. Create Virtual Environment (Recommended)
-
-### Linux / macOS
-
-```bash
+# Create and activate virtual environment
 python -m venv venv
+# On Windows PowerShell:
+.\venv\Scripts\Activate.ps1
+# On Linux/macOS:
 source venv/bin/activate
-```
 
-### Windows
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
----
-
-## 3. Install Dependencies
-
-```bash
+# Install package dependencies
 pip install -r requirements.txt
 ```
 
----
-
-# Required Python Version
-
-Recommended:
-
-```text
-Python 3.10+
-```
+*(Dependencies include: `pygame`, `numpy`, `matplotlib`, and `scipy`)*
 
 ---
-
-# Dependencies
-
-Main dependencies:
-
-```text
-numpy
-matplotlib
-pygame
-networkx
-pandas
-```
-
----
-
-# Running TRACE Simulation
 
 ## Basic Execution
 
+Run the simulation interactively with default configurations:
 ```bash
-python run_trace.py
+python run_trace.py --robots 4
 ```
 
----
+### Useful CLI Parameters:
+* `--robots {2,4,8}`: Set the number of robots.
+* `--generations N`: Number of solver generations (default: 300).
+* `--population M`: Solver population size (default: 50).
+* `--energy E`: Robot battery budget in energy units (default: 95).
+* `--no-ui`: Run the simulation headless (outputs final execution metrics only).
+* `--mission-time-limit T`: Turn limit constraint (optional).
 
-## Example with Parameters
-
+Example:
 ```bash
-python run_trace.py \
-    --robots 4 \
-    --rows 20 \
-    --cols 20 \
-    --seed 7 \
-    --obstacle-ratio 0.10 \
-    --generations 280 \
-    --population 42 \
-    --energy 95
+python run_trace.py --robots 8 --generations 350 --population 60 --energy 120 --no-ui
 ```
 
 ---
 
-# Command-Line Parameters
+## Section 8 Experimental Studies
 
-| Parameter | Description |
-|---|---|
-| `--robots` | Number of robots/UAVs |
-| `--rows` | Grid rows |
-| `--cols` | Grid columns |
-| `--seed` | Random seed |
-| `--obstacle-ratio` | Obstacle density |
-| `--generations` | Delta RL-MA generations |
-| `--population` | Population size |
-| `--energy` | Robot energy budget |
-| `--no-ui` | Run without graphical interface |
+This package implements CLI support for reproducing the ablation studies, sensitivity analyses, and statistical evaluations detailed in Section 8 of the paper. Use `--experiment true` in combination with one of the `--study` choices below.
 
----
+### 1. Comparative Performance Study
+Compare TRACE against baseline algorithms (`A*-DARP`, `Delta RL-MA`, `DARP+RL-GA`) over all map sizes, robot counts, and seeds.
+* **Run:**
+  ```bash
+  python run_trace.py --experiment true --study performance
+  ```
+* **Plot results:**
+  ```bash
+  python plot_metric.py --plot convergence
+  ```
 
-# Running Without UI
+### 2. Component Ablation Study
+Evaluate the impact of disabling core elements of TRACE (e.g. panic scheduling, priority weighting, annealing, or state augmentation) across variants $A_0$ to $A_{10}$.
+* **Run:**
+  ```bash
+  python run_trace.py --experiment true --study ablation
+  ```
+* **Plot results:**
+  ```bash
+  python plot_metric.py --plot ablation
+  ```
 
-Useful for experiments and batch execution.
+### 3. Stage-1 Beta Weight Sensitivity Analysis
+Analyze the impact of varying the Stage-1 area decomposition priority scaling factor ($\beta$) from $0.0$ to $1.0$ versus using the annealed schedules.
+* **Run:**
+  ```bash
+  python run_trace.py --experiment true --study beta_sensitivity
+  ```
+* **Plot results:**
+  ```bash
+  python plot_metric.py --plot beta_sensitivity
+  ```
 
-```bash
-python run_trace.py --no-ui
-```
+### 4. Stage-3 Parameter Sensitivity Analysis
+Analyze the sensitivity of the memetic search algorithm to the priority reward scale ($\omega_W$) and RL reward multiplier ($\mu$).
+* **Run:**
+  ```bash
+  python run_trace.py --experiment true --study stage3_sensitivity
+  ```
+* **Plot results:**
+  ```bash
+  python plot_metric.py --plot stage3_sensitivity
+  ```
 
----
+### 5. Local Search Operator Set Ablation
+Ablate individual local search operators (Swap, 2-opt, Relocate, Block Swap, Block Relocate) to examine their contributions to route untangling and escaping deep local minima.
+* **Run:**
+  ```bash
+  python run_trace.py --experiment true --study operator_ablation
+  ```
+* **Plot results:**
+  ```bash
+  python plot_metric.py --plot operator_ablation
+  ```
 
-# Saved Simulation Metrics
+### 6. Statistical Significance & Effect Size Analysis
+Compute statistical significance using Welch’s two-sample $t$-test and effect size (Cohen's $d$) for all ablation variants compared against the full TRACE configuration ($A_0$).
+* **Run:**
+  ```bash
+  python run_trace.py --experiment true --study ablation_stats
+  ```
+* **Plot results:**
+  ```bash
+  python plot_metric.py --plot ablation_stats
+  ```
 
-After every simulation, all metrics are automatically saved.
-
-### Save Location
-
-```text
-results/
-```
-
-### File Naming Convention
-
-```text
-TRACE_metrics_R20x20_UAV4_OBS0100_HP0100_HV0200_E95_POP42_GEN280_SEED7.csv
-```
-
-The filename includes:
-
-| Tag | Meaning |
-|---|---|
-| R20x20 | Grid size |
-| UAV4 | Number of robots |
-| OBS0100 | Obstacle ratio |
-| HP0100 | High-priority ratio |
-| HV0200 | Hidden victim ratio |
-| E95 | Energy budget |
-| POP42 | Population size |
-| GEN280 | RL generations |
-| SEED7 | Random seed |
-
----
-
-# Spreadsheet Contents
-
-Each CSV file stores:
-
-- Simulation parameters
-- Step-wise coverage metrics
-- Priority servicing history
-- Redundancy history
-- Turn history
-- Hidden victim discovery history
-- Delta RL-MA convergence history
-- Final mission statistics
-
-The spreadsheet can be opened directly in:
-
-- Microsoft Excel
-- LibreOffice Calc
-- Google Sheets
-- Pandas
+All raw results (`results/*.csv`), summary tables (`results/*_summary.csv`), LaTeX outputs (`results/tables/*.tex`), and figures (`results/plots/*.pdf`) are written into the `results/` directory.
 
 ---
 
-# Plotting Saved Metrics
-
-## Plot Existing Simulation Results
-
-```bash
-python plot_metrics.py \
-    --robots 4 \
-    --rows 20 \
-    --cols 20 \
-    --seed 7 \
-    --obstacle-ratio 0.10 \
-    --generations 280 \
-    --population 42 \
-    --energy 95
-```
-
-The plotting script:
-
-1. Reconstructs the metric filename using the provided parameters
-2. Reads the CSV spreadsheet
-3. Generates plots from saved data
-
----
-
-# Generated Plots
-
-The plotting pipeline generates:
-
-1. Coverage vs Simulation Step
-2. Priority Servicing vs Simulation Step
-3. Coverage Redundancy
-4. Total Turns
-5. Hidden Victim Discovery
-6. Delta RL-MA Cost Convergence
-7. Delta RL-MA Priority Convergence
-
----
-
-# Experiment Workflow
-
-Typical workflow:
-
-```text
-1. Configure parameters
-2. Run simulation
-3. Metrics automatically saved
-4. Reconstruct metric filename
-5. Load spreadsheet
-6. Generate plots
-7. Compare experiments
-```
-
----
-
-# TRACE Algorithm Summary
-
-## Stage 1 — Priority-aware A*-DARP
-
-Goals:
-
-- Balanced decomposition
-- Connectivity preservation
-- Obstacle-aware partitioning
-- Priority balancing
-
----
-
-## Stage 2 — PW-CVRP
-
-Goals:
-
-- Energy-aware routing
-- Priority weighting
-- Turn minimization
-- Route feasibility
-
----
-
-## Stage 3 — Delta RL-MA
-
-Goals:
-
-- Adaptive operator selection
-- Local-search optimization
-- Stagnation escape
-- Priority-aware optimization
-
----
-
-# Evaluation Metrics
-
-## Coverage
-
-Measures the percentage of free cells visited.
-
----
-
-## Priority Servicing
-
-Measures how effectively high-priority victim regions are visited.
-
----
-
-## Redundancy
-
-Measures repeated visits to already-covered cells.
-
-Lower is better.
-
----
-
-## Total Turns
-
-Measures path smoothness and energy consumption.
-
-Lower is better.
-
----
-
-## Mission Time
-
-Measures the total execution duration.
-
-Lower is better.
-
----
-
-## Hidden Victim Score
-
-Measures successful discovery of previously unknown victims.
-
-Higher is better.
-
----
-
-# Reproducibility
-
-To ensure reproducible experiments:
-
-- Use fixed seeds
-- Store all metric spreadsheets
-- Maintain parameter-specific filenames
-- Compare experiments using identical configurations
-
----
-
-# Future Extensions
-
-Potential future improvements:
-
-- Dynamic obstacles
-- Multi-trip recharge stations
-- Real-time communication constraints
-- ROS2 integration
-- Drone swarm hardware integration
-- QMIX online adaptation
-- Transformer-based coordination
-- 3D UAV environments
-- Wind-aware dynamics
-- Battery degradation models
-- Sim-to-real transfer
-
----
-
-# Citation
-
-If using this implementation in academic work, please cite the associated TRACE framework and the underlying A*-DARP, QMIX, and Delta RL-MA references.
-
----
-
-# License
-
-This project is intended for research and academic experimentation.
-
-Please add the appropriate open-source license before public release.
-
----
-
-# Contact
-
-AIMS Lab
-Department of Information Technology
-IIIT Allahabad
-Prayagraj, India
-
+## Directory & Package Structure
+
+* `run_trace.py`: Main entry script executing the Pygame UI simulation and running the 6 Section 8 evaluation studies.
+* `plot_metric.py`: Dedicated plotting script containing matplotlib functions to generate performance curves.
+* `trace/`: Core TRACE engine library:
+  * [config.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/config.py): TRACE configuration parameters and default values.
+  * [environment.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/environment.py): SARS environment generator, grid mapping, cell coordinates, and victim priors.
+  * [decomposition.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/decomposition.py): Priority-Aware A\*-DARP area decomposition partitioning.
+  * [cvrp.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/cvrp.py): CVRP instances creation and trajectory constraints checking.
+  * [delta_rl_memetic.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/delta_rl_memetic.py): Evolutionary reinforcement learning solver and local search operators.
+  * [simulator.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/simulator.py): End-to-end trace workflow simulation executor.
+  * [metrics.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/metrics.py): Performance metrics calculations.
+  * [ui.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/ui.py): Pygame graphics interface.
+  * [astar.py](file:///c:/Users/DELL/Documents/Thesis%20Code%20WorkSpace/TRACE_implementation/trace/astar.py): A\* search pathfinder.
+* `baselines/`: Benchmark baseline implementations (`astar_darp.py`, `delta_rl_ma.py`, `darp_rl_ga.py`).
+* `results/`: Directory created during runs containing CSV outputs, LaTeX tables (`results/tables/`), and visual charts (`results/plots/`).
